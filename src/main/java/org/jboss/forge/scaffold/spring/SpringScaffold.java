@@ -127,6 +127,7 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
     private static final String ERROR_TEMPLATE = "scaffold/spring/error.jsp";
     private static final String INDEX_TEMPLATE = "scaffold/spring/index.jsp";
 
+    private static final String TILES_TEMPLATE = "scaffold/spring/tiles.xl";
     //
     // Protected members (nothing is private, to help sub-classing)
     //
@@ -158,9 +159,11 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
     protected int navigationTemplateIndent;
 
     protected CompiledTemplateResource errorTemplate;
-    protected CompiledTemplateResource indexTemplate;   
+    protected CompiledTemplateResource indexTemplate;
+
+    protected CompiledTemplateResource tilesTemplate;
+
     private TemplateResolver<ClassLoader> resolver;
-    
     private ShellPrompt prompt;
     private TemplateCompiler compiler;
     private Event<InstallFacets> install;
@@ -210,7 +213,7 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
 
         result.add(setupMVCContext(targetDir));
         result.add(updateWebXML(targetDir));
-        result.add(setupTilesLayout(targetDir));
+        result.add(setupTilesLayout(targetDir, overwrite));
 
         deps.addDirectDependency(DependencyBuilder.create("org.jboss.spec.javax.servlet:jboss-servlet-api_3.0_spec"));
         deps.addDirectDependency(DependencyBuilder.create("org.apache.tiles:tiles-jsp:2.1.3"));
@@ -324,16 +327,16 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
                 result.add(ScaffoldUtil.createOrOverwrite(this.prompt, web.getWebResource("WEB-INF/views" + targetDir + entity.getName()
                         + "/create" + entity.getName() + ".jsp"), this.createTemplate.render(context), overwrite));
 
-                addTilesDefinition(definitions, "/index", tilesName, "Welcome to Forge",
+                addTilesView(definitions, "/index", tilesName, "Welcome to Forge",
                         "Welcome to Forge", "Your application is running.", "/WEB-INF/views/index.jsp");
 
                 if (!targetDir.equals("/"))
                 {
-                    addTilesDefinition(definitions, targetDir + "index", tilesName, "Welcome to Forge",
+                    addTilesView(definitions, targetDir + "index", tilesName, "Welcome to Forge",
                             "Welcome to Forge", "Your application is running.", "/WEB-INF/views" + targetDir + "index.jsp");
                 }
 
-                addTilesDefinition(definitions, "create" + entity.getName(), tilesName, "Create New " + StringUtils.uncamelCase(entity.getName()),
+                addTilesView(definitions, "create" + entity.getName(), tilesName, "Create New " + StringUtils.uncamelCase(entity.getName()),
                         StringUtils.uncamelCase(entity.getName()), "Create a new " + StringUtils.uncamelCase(entity.getName()),
                         "/WEB-INF/views" + targetDir + entity.getName() + "/create" + entity.getName() + ".jsp");
 
@@ -344,7 +347,7 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
                 result.add(ScaffoldUtil.createOrOverwrite(this.prompt, web.getWebResource("WEB-INF/views" + targetDir + entity.getName()
                         + "/update" + entity.getName() + ".jsp"), this.updateTemplate.render(context), overwrite));
 
-                addTilesDefinition(definitions, "update" + entity.getName(), tilesName, "Update " + StringUtils.uncamelCase(entity.getName()),
+                addTilesView(definitions, "update" + entity.getName(), tilesName, "Update " + StringUtils.uncamelCase(entity.getName()),
                         StringUtils.uncamelCase(entity.getName()), "Edit existing " + StringUtils.uncamelCase(entity.getName()),
                         "/WEB-INF/views" + targetDir + entity.getName() + "/update" + entity.getName() + ".jsp");
 
@@ -363,7 +366,7 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
                 result.add(ScaffoldUtil.createOrOverwrite(this.prompt, web.getWebResource("WEB-INF/views" + targetDir + entity.getName()
                         + "/" + entityPlural.toLowerCase() + ".jsp"), this.viewAllTemplate.render(context), overwrite));
 
-                addTilesDefinition(definitions, entityPlural.toLowerCase(), tilesName, 
+                addTilesView(definitions, entityPlural.toLowerCase(), tilesName, 
                         "Search " + StringUtils.uncamelCase(entity.getName()) + " entities", StringUtils.uncamelCase(entity.getName()),
                         "Search " + StringUtils.uncamelCase(entity.getName()) + " entities", "/WEB-INF/views" + targetDir + entity.getName()
                         + "/" + entityPlural.toLowerCase() + ".jsp");
@@ -376,7 +379,7 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
                 result.add(ScaffoldUtil.createOrOverwrite(this.prompt, web.getWebResource("WEB-INF/views" + targetDir + entity.getName()
                         + "/view" + entity.getName() + ".jsp"), this.viewTemplate.render(context), overwrite));
 
-                addTilesDefinition(definitions, "view" + entity.getName(), tilesName, "View " + StringUtils.uncamelCase(entity.getName()),
+                addTilesView(definitions, "view" + entity.getName(), tilesName, "View " + StringUtils.uncamelCase(entity.getName()),
                         entity.getName(), "View existing " + StringUtils.uncamelCase(entity.getName()),
                         "/WEB-INF/views" + targetDir + entity.getName() + "/view" + entity.getName()+ ".jsp");
 
@@ -691,35 +694,24 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
         return web.getWebResource(filename);
     }
 
-    protected Resource<?> setupTilesLayout(String targetDir) {
+    protected Resource<?> setupTilesLayout(String targetDir, boolean overwrite) {
         WebResourceFacet web = this.project.getFacet(WebResourceFacet.class);
 
-        Node tilesDefinitions = new Node("tiles-definitions");
+        Node definitions = new Node("tiles-definitions");
 
-        if (web.getWebResource("WEB-INF/layouts/layouts.xml").exists())
-            tilesDefinitions = XMLParser.parse(web.getWebResource("WEB-INF/layouts/layouts.xml").getResourceInputStream());
-
-        if (!tilesDefinitionExists("standard", tilesDefinitions)) {
-            Node standardDefinition = new Node("definition", tilesDefinitions);
-            standardDefinition.attribute("name", "standard");
-            standardDefinition.attribute("template", "/WEB-INF/layouts/pageTemplate.jsp");
+        if (!web.getWebResource("WEB-INF/layouts/layouts.xml").exists())
+        {
+            Map<Object, Object> context = CollectionUtils.newHashMap();
+            context.put("dtd", "<!DOCTYPE tiles-definitions PUBLIC \"-//Apache Software Foundation//DTD Tiles Configuration 2.0//EN\""
+                    + "http://tiles.apache.org/dtds/tiles-config_2_0.dtd\">)");
+            ScaffoldUtil.createOrOverwrite(this.prompt, web.getWebResource("WEB-INF/layouts/layouts.xml"),
+                this.tilesTemplate.render(context), overwrite);
         }
 
-        if (!targetDir.equals("/")) {
+        definitions = XMLParser.parse(web.getWebResource("WEB-INF/layouts/layouts.xml").getResourceInputStream());
+        addTilesLayout(definitions, targetDir);
 
-            if(!tilesDefinitionExists(targetDir.substring(1, targetDir.length()-1), tilesDefinitions)) {
-                Node targetDirDefinition = new Node("definition", tilesDefinitions);
-                targetDirDefinition.attribute("name", targetDir.substring(1, targetDir.length()-1));
-                targetDirDefinition.attribute("template", "/WEB-INF/layouts/" + targetDir.substring(1, targetDir.length()-1) + "Template.jsp");
-            }
-        }
-
-        String tilesDefinitionFile = XMLParser.toXMLString(tilesDefinitions);
-
-        // TODO: Find a cleaner way to add Tiles DTD than this.
-
-        tilesDefinitionFile = tilesDefinitionFile.substring(0, 55) + "\n<!DOCTYPE tiles-definitions PUBLIC\n\"-//Apache Software Foundation"
-        + "//DTD Tiles Configuration 2.0//EN\"\n\"http://tiles.apache.org/dtds/tiles-config_2_0.dtd\">\n\n" + tilesDefinitionFile.substring(55);
+        String tilesDefinitionFile = XMLParser.toXMLString(definitions);
 
         return web.createWebResource(tilesDefinitionFile, "/WEB-INF/layouts/layouts.xml"); 
     }
@@ -856,6 +848,11 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
 
         if (this.indexTemplate == null) {
             this.indexTemplate = compiler.compile(INDEX_TEMPLATE);
+        }
+
+        if (this.tilesTemplate == null)
+        {
+            this.tilesTemplate = compiler.compile(TILES_TEMPLATE);
         }
     }
 
@@ -1060,7 +1057,29 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider {
         web.createWebResource(XMLParser.toXMLString(beans), filename);
     }
 
-    protected void addTilesDefinition(Node definitions, String name, String tile,
+    protected void addTilesLayout(Node definitions, String targetDir)
+    {
+        String name = targetDir.equals("/") ? "standard" : targetDir.substring(1, targetDir.length()-1);
+
+        if (tilesDefinitionExists(name, definitions))
+        {
+            return;
+        }
+
+        Node definition = new Node("definition", definitions);
+        definition.attribute("name", name);
+
+        if (name.equals("standard"))
+        {
+            definition.attribute("template", "WEB-INF/layouts/pageTemplate.jsp");
+        }
+        else
+        {
+            definition.attribute("template", "WEB-INF/layouts/" + targetDir.substring(1, targetDir.length()-1) + "Template.jsp");
+        }
+    }
+
+    protected void addTilesView(Node definitions, String name, String tile,
             String title, String header, String subheader, String bodyFile)
     {
         if (tilesDefinitionExists(name, definitions))
