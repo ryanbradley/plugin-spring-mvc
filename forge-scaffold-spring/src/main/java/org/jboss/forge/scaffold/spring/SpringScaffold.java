@@ -668,9 +668,7 @@ public class SpringScaffold extends BaseFacet implements ScaffoldProvider
     @Override
     public AccessStrategy getAccessStrategy()
     {
-        // No AccessStrategy required for Spring.
-
-        return null;
+        return new SpringAccessStrategy(this.project);
     }
 
     @Override
